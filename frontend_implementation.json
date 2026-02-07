@@ -1,0 +1,61 @@
+{
+  "kind": "implementation_plan",
+  "version": "1.0",
+  "title": "Deterministic bootstrap errors, richer diagnostics, and resilient baseline user access",
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "summary": "Reorder and refine authenticated bootstrap state logic so actor/role errors deterministically surface as authenticated-error (not masked by loading), with a reliable retry that re-attempts both actor creation and role lookup.",
+      "acceptanceCriteria": [
+        "When the user is authenticated and actor creation fails, the app shows the Initialization Failed screen (not an infinite loading state).",
+        "When the user is authenticated and `getCallerUserRole()` fails, the app shows the Initialization Failed screen with the error message.",
+        "Retry from the error screen re-attempts both actor initialization and role lookup and can recover without a hard refresh if the underlying issue is resolved."
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/hooks/useAppBootstrap.ts",
+          "operation": "modify",
+          "description": "Adjust the authenticated bootstrap state machine so actor/role errors take precedence over the authenticated-loading branch (e.g., check actorError/roleError before any loading returns), ensuring authenticated users reliably enter `authenticated-error` whenever `useSafeActor` or `useGetCallerUserRole` fails. Keep retry behavior deterministic by re-triggering both actor re-fetch and role re-fetch, and avoid returning loading when an error is already present."
+        }
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "summary": "Enhance Initialization Failed UI with a collapsible Technical details section and a Copy details action for easier bootstrap failure diagnostics.",
+      "acceptanceCriteria": [
+        "The error screen shows a user-friendly summary plus a collapsible technical details block.",
+        "Technical details include: canister ID (from existing utilities), API base URL, and principal text when available.",
+        "A \"Copy details\" button copies the full technical details text to the clipboard and provides visible confirmation (e.g., button label change or inline message)."
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/components/InitializationErrorPanel.tsx",
+          "operation": "modify",
+          "description": "Update the panel to include (English) a collapsible \"Technical details\" section (e.g., using a native details/summary or composed UI primitives without editing `frontend/src/components/ui`). Include: error message, error stack if present, backend canister ID (via existing utility), resolved API base URL (via existing utility), and authenticated principal text when available (via existing auth hook). Add a \"Copy details\" button that copies the full technical-details text to the clipboard and shows visible confirmation (temporary label change and/or inline status)."
+        }
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "summary": "Make bootstrap resilient for newly authenticated non-admin users by attempting an idempotent baseline access initialization flow when role lookup indicates missing access, then re-fetching the role and surfacing actionable errors if it still fails.",
+      "acceptanceCriteria": [
+        "A newly authenticated user without any special URL parameters (e.g., no `caffeineAdminToken`) can complete app bootstrap and reach the authenticated-ready state.",
+        "Recruiter/admin behavior remains protected (admin-only views and admin-only queries continue to require admin privileges).",
+        "The baseline access initialization is idempotent: calling it multiple times does not error and does not escalate privileges beyond baseline user access.",
+        "If baseline access cannot be established, the app shows Initialization Failed with an actionable error message."
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/hooks/useEnsureBaselineUserAccess.ts",
+          "operation": "create",
+          "description": "Create a small hook/helper that uses the authenticated actor to invoke the baseline access initialization flow (call the backend capability exposed for this purpose) in an idempotent, \"run at most once per session per principal\" manner, returning status and any error for bootstrap to consume. Use the selected \"authorization\" component’s role-based access control expectations as the guiding model for baseline \"user\" access. Verify the component's usage instructions before implementing."
+        },
+        {
+          "path": "frontend/src/hooks/useAppBootstrap.ts",
+          "operation": "modify",
+          "description": "Integrate the baseline access initialization attempt into bootstrap: when authenticated role lookup fails in a way that indicates missing access/authorization for a newly authenticated user, invoke the baseline access initializer once, then re-fetch the role. If the initializer fails or role still cannot be fetched, transition to `authenticated-error` with an actionable English error message. Ensure retry from the error screen resets the one-time attempt and re-attempts actor initialization, baseline access initialization (when applicable), and role lookup. Use the selected \"authorization\" component behavior as context for what constitutes baseline access vs admin-only access. Verify the component's usage instructions before implementing."
+        }
+      ]
+    }
+  ]
+}
