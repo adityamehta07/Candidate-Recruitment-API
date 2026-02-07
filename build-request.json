@@ -1,0 +1,77 @@
+{
+  "kind": "build_request",
+  "title": "Fix app bootstrap initialization failure and improve error diagnostics",
+  "priority": "high",
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "text": "Fix the authenticated bootstrap state machine so initialization errors are surfaced deterministically (not masked as loading). In `frontend/src/hooks/useAppBootstrap.ts`, ensure actor/role errors take precedence over the `authenticated-loading` branch when the user is authenticated, so the app reliably enters `authenticated-error` when `useSafeActor` or `useGetCallerUserRole` fails.",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-4"
+        ],
+        "quotes": [
+          "initialization failed"
+        ]
+      },
+      "acceptanceCriteria": [
+        "When the user is authenticated and actor creation fails, the app shows the Initialization Failed screen (not an infinite loading state).",
+        "When the user is authenticated and `getCallerUserRole()` fails, the app shows the Initialization Failed screen with the error message.",
+        "Retry from the error screen re-attempts both actor initialization and role lookup and can recover without a hard refresh if the underlying issue is resolved."
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "text": "Improve the Initialization Failed UI to help diagnose bootstrap failures. Update `frontend/src/components/InitializationErrorPanel.tsx` to display (in English) a collapsible \"Technical details\" section that includes: error message, error stack (if present), current backend canister ID, resolved API base URL, and the authenticated principal (if available). Add a \"Copy details\" button that copies these details to clipboard.",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-4"
+        ],
+        "quotes": [
+          "initialization failed"
+        ]
+      },
+      "acceptanceCriteria": [
+        "The error screen shows a user-friendly summary plus a collapsible technical details block.",
+        "Technical details include: canister ID (from existing utilities), API base URL, and principal text when available.",
+        "A \"Copy details\" button copies the full technical details text to the clipboard and provides visible confirmation (e.g., button label change or inline message)."
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "text": "Make initialization resilient for non-admin users by ensuring basic user access can be established without requiring an admin secret token. If the current bootstrap failure is due to authorization/role lookup (e.g., backend rejects `getCallerUserRole()` for newly authenticated users), update the backend (`backend/main.mo`) to support an idempotent flow where an authenticated caller can obtain/initialize their baseline \"user\" access needed by the app, and update the frontend bootstrap to invoke this flow once when role lookup indicates missing access, then re-fetch the role.",
+      "target": "both",
+      "source": {
+        "messageIds": [
+          "msg-4"
+        ],
+        "quotes": [
+          "initialization failed"
+        ]
+      },
+      "acceptanceCriteria": [
+        "A newly authenticated user without any special URL parameters (e.g., no `caffeineAdminToken`) can complete app bootstrap and reach the authenticated-ready state.",
+        "Recruiter/admin behavior remains protected (admin-only views and admin-only queries continue to require admin privileges).",
+        "The baseline access initialization is idempotent: calling it multiple times does not error and does not escalate privileges beyond baseline user access.",
+        "If baseline access cannot be established, the app shows Initialization Failed with an actionable error message."
+      ]
+    }
+  ],
+  "constraints": [
+    "Do not edit files under `frontend/src/components/ui` (compose them only).",
+    "Do not modify any files listed in `frontend.immutablePaths` in SYSTEM_CONTEXT.",
+    "Keep all Motoko logic within the single actor in `backend/main.mo`; add `backend/migration.mo` only if a stable-state schema change requires it.",
+    "Use English for all user-facing text."
+  ],
+  "nonGoals": [
+    "Adding new product features unrelated to initialization (e.g., new candidate fields, new recruiter filters).",
+    "Introducing third-party auth providers beyond Internet Identity.",
+    "Adding external databases or services."
+  ],
+  "imageRequirements": {
+    "required": [],
+    "edits": []
+  }
+}
